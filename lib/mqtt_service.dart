@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
-import 'room_model.dart';
 
 class MQTTService with ChangeNotifier {
   late MqttServerClient client;
   String connectionStatus = "Disconnected";
-  List<Room> rooms = [];
 
-  Map<String, double> _temperature = {};
-  Map<String, double> _humidity = {};
+  Map<String, Map<String, double>> _temperature = {};
+  Map<String, Map<String, double>> _humidity = {};
 
-  Map<String, double> get temperature => _temperature;
-  Map<String, double> get humidity => _humidity;
+  Map<String, Map<String, double>> get temperature => _temperature;
+  Map<String, Map<String, double>> get humidity => _humidity;
+
+  Set<String> _plantsSet = {};
+  List<String> get plants => _plantsSet.toList();
 
   MQTTService() {
     client = MqttServerClient('192.168.187.101', 'client1');
@@ -31,31 +32,36 @@ class MQTTService with ChangeNotifier {
       connectionStatus = "Connected to ${client.server}";
       notifyListeners();
 
-      List<String> rooms = ['room1', 'garden'];
-
-      for(String room in rooms){
-        client.subscribe('/$room/temperature', MqttQos.atLeastOnce);
-        client.subscribe('/$room/humidity', MqttQos.atLeastOnce);
+      List<String> rooms = ['room', 'garden'];
+      
+      for (String room in rooms) {
+        client.subscribe('/$room/#', MqttQos.atLeastOnce);
       }
 
       client.updates!.listen((List<MqttReceivedMessage<MqttMessage?>>? c) {
         final MqttPublishMessage message = c![0].payload as MqttPublishMessage;
         final payload = MqttPublishPayload.bytesToStringAsString(message.payload.message);
         final topic = c[0].topic;
+
         final parts = topic.split('/');
         final room = parts[1];
-        final type = parts[2];
+        final plant = parts[2];
+        final type = parts[3];
 
-        if (type == 'temperature') {
-          _temperature[room] = double.tryParse(payload) ?? 0.0;
-        } else if (type == 'humidity') {
-          _humidity[room] = double.tryParse(payload) ?? 0.0;
+        _plantsSet.add(plant);
+
+        if(type == 'temperature'){
+          _temperature[room] ??= {};
+          _temperature[room]![plant] = double.tryParse(payload) ?? 0.0;
+        }
+        else if(type == 'humidity'){
+          _humidity[room] ??= {};
+          _humidity[room]![plant] = double.tryParse(payload) ?? 0.0;
         }
 
         notifyListeners();
       });
-    } 
-    catch (e) {
+    } catch (e) {
       print('Exception: $e');
       client.disconnect();
       connectionStatus = "Connection failed";
