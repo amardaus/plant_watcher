@@ -1,3 +1,3 @@
 # plant_watcher
 
-A new Flutter project.
+Plant monitoring app
