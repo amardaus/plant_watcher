@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
+import 'package:syncfusion_flutter_gauges/gauges.dart';
+import 'package:plant_watcher/widgets/gauge.dart';
 
 void main() {
   runApp(MyApp());
@@ -10,6 +12,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      title: 'Plant watcher',
       home: HomeScreen(),
     );
   }
@@ -22,68 +25,83 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late MqttServerClient client;
-  bool isConnected = false;
   String connectionStatus = "Disconnected";
 
   @override
   void initState() {
     super.initState();
-    client = MqttServerClient('192.168.187.101', '')
-      ..logging(on: true)
-      ..setProtocolV311()
-      ..keepAlivePeriod = 20
-      ..onDisconnected = onDisconnected
-      ..secure = false; // Disable SSL/TLS
+    client = MqttServerClient('192.168.187.101', 'client1');
+    client.logging(on: true); // Enable logging for debugging
     connectClient();
   }
 
   Future<void> connectClient() async {
-    final connMess = MqttConnectMessage()
-        .withClientIdentifier('MQTTClient')
-        .withWillTopic('willtopic')
-        .withWillMessage('My Will message')
-        .startClean()
-        .withWillQos(MqttQos.atLeastOnce);
-    client.connectionMessage = connMess;
+    client.keepAlivePeriod = 20;
+    client.onDisconnected = onDisconnected;
+    client.onConnected = onConnected;
+    client.onSubscribed = onSubscribed;
 
     try {
-      await client.connect();
+      await client.connect('client1');
       setState(() {
-        isConnected = true;
         connectionStatus = "Connected to ${client.server}";
       });
-      client.subscribe('/temperature', MqttQos.atMostOnce);
-    } catch (e) {
+      client.subscribe('/room1/temperature', MqttQos.atLeastOnce);
+      client.updates!.listen((List<MqttReceivedMessage<MqttMessage?>>? c) {
+        final MqttPublishMessage message = c![0].payload as MqttPublishMessage;
+        final payload = MqttPublishPayload.bytesToStringAsString(message.payload.message);
+        DateTime _now = DateTime.now();
+
+        publishMessage('/time_received', 'Time received: $_now');
+      });
+    } 
+    catch (e) {
       print('Exception: $e');
       client.disconnect();
       setState(() {
-        isConnected = false;
         connectionStatus = "Connection failed";
       });
     }
   }
 
+  void disconnect() {
+    client.disconnect();
+  }
+
+  void onConnected() {
+    print('Connected');
+  }
+
   void onDisconnected() {
     print('Disconnected');
     setState(() {
-      isConnected = false;
       connectionStatus = "Disconnected";
     });
   }
+
+   void onSubscribed(String topic) {
+    print('Subscribed topic: $topic');
+  }
+
+  void publishMessage(String topic, String message) {
+      final builder = MqttClientPayloadBuilder();
+      builder.addString(message);
+      client.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!);
+    }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('MQTT Client Example'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: Text('Plant watcher'),
+
       ),
-      body: Center(
-        child: Column(
+      body: Center(child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(connectionStatus),
             SizedBox(height: 20),
+            if(connectionStatus == "Disconnected" || connectionStatus == "Connection failed")
             ElevatedButton(
               onPressed: () {
                 connectClient();
@@ -92,48 +110,44 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             SizedBox(height: 20),
             ElevatedButton(
-              onPressed: isConnected
+              onPressed: connectionStatus.startsWith("Connected")
                   ? () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => WeatherScreen(client: client),
+                          builder: (context) => TemperatureScreen(client: client),
                         ),
                       );
                     }
                   : null,
-              child: Text('Go to Weather Screen'),
+              child: Text('Room 1'),
             ),
           ],
-        ),
-      ),
+        )
+      ,)
     );
   }
 }
 
-class WeatherScreen extends StatelessWidget {
+class TemperatureScreen extends StatelessWidget {
   final MqttServerClient client;
-
-  WeatherScreen({required this.client});
-
+  double gaugeValue = 0.0;
+  
+  TemperatureScreen({required this.client});
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Weather Updates')),
+      appBar: AppBar(title: Text('Temperature')),
       body: StreamBuilder<List<MqttReceivedMessage<MqttMessage>>>(
-        stream: client.updates,
+        stream: client.updates, // Receive MQTT updates
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return Center(child: CircularProgressIndicator());
           }
-
           final updates = snapshot.data!;
           final MqttPublishMessage recMess = updates.last.payload as MqttPublishMessage;
           final pt = MqttPublishPayload.bytesToStringAsString(recMess.payload.message);
-
-          return Center(
-            child: Text('Latest Weather: $pt'),
-          );
+          return Center(child: Text('Last value: $pt'));
         },
       ),
     );
