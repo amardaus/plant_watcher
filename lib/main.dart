@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
-import 'package:syncfusion_flutter_gauges/gauges.dart';
-import 'package:plant_watcher/widgets/gauge.dart';
 
 void main() {
   runApp(MyApp());
@@ -26,6 +24,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late MqttServerClient client;
   String connectionStatus = "Disconnected";
+  double _temperatureValue = 0;
+  double _humidityValue = 0;
 
   @override
   void initState() {
@@ -47,11 +47,21 @@ class _HomeScreenState extends State<HomeScreen> {
         connectionStatus = "Connected to ${client.server}";
       });
       client.subscribe('/room1/temperature', MqttQos.atLeastOnce);
+      client.subscribe('/room1/humidity', MqttQos.atLeastOnce);
+
       client.updates!.listen((List<MqttReceivedMessage<MqttMessage?>>? c) {
         final MqttPublishMessage message = c![0].payload as MqttPublishMessage;
         final payload = MqttPublishPayload.bytesToStringAsString(message.payload.message);
-        DateTime _now = DateTime.now();
+        final topic = c[0].topic;
 
+        if (topic == '/room1/temperature') {
+          _temperatureValue = double.tryParse(payload) ?? 0.0;
+        }
+        else if (topic == '/room1/humidity'){
+          _humidityValue = double.tryParse(payload) ?? 0.0;
+        }
+
+        DateTime _now = DateTime.now();
         publishMessage('/time_received', 'Time received: $_now');
       });
     } 
@@ -115,7 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => TemperatureScreen(client: client),
+                          builder: (context) => TemperatureHumidityScreen(client: client),
                         ),
                       );
                     }
@@ -129,26 +139,50 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class TemperatureScreen extends StatelessWidget {
+class TemperatureHumidityScreen extends StatefulWidget {
   final MqttServerClient client;
-  double gaugeValue = 0.0;
+
+  TemperatureHumidityScreen({required this.client});
+
+  @override
+  _TemperatureHumidityScreenState createState() => _TemperatureHumidityScreenState();
+}
+
+class _TemperatureHumidityScreenState extends State<TemperatureHumidityScreen> {
+  double _temperatureValue = 0.0;
+  double _humidityValue = 0.0;
   
-  TemperatureScreen({required this.client});
+  @override
+  void initState() {
+    super.initState();
+    widget.client.updates!.listen((List<MqttReceivedMessage<MqttMessage?>>? c) {
+      final MqttPublishMessage message = c![0].payload as MqttPublishMessage;
+      final payload = MqttPublishPayload.bytesToStringAsString(message.payload.message);
+      final topic = c[0].topic;
+
+      setState(() {
+        if (topic == '/room1/temperature') {
+          _temperatureValue = double.tryParse(payload) ?? 0.0;
+        } else if (topic == '/room1/humidity') {
+          _humidityValue = double.tryParse(payload) ?? 0.0;
+        }
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Temperature')),
-      body: StreamBuilder<List<MqttReceivedMessage<MqttMessage>>>(
-        stream: client.updates, // Receive MQTT updates
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return Center(child: CircularProgressIndicator());
-          }
-          final updates = snapshot.data!;
-          final MqttPublishMessage recMess = updates.last.payload as MqttPublishMessage;
-          final pt = MqttPublishPayload.bytesToStringAsString(recMess.payload.message);
-          return Center(child: Text('Last value: $pt'));
-        },
+      appBar: AppBar(title: Text('Temperature and Humidity')),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('Temperature: $_temperatureValue °C'),
+            SizedBox(height: 20),
+            Text('Humidity: $_humidityValue %'),
+          ],
+        ),
       ),
     );
   }
