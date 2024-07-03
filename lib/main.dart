@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'mqtt_service.dart';
+import 'dart:convert';
 
 void main() {
   runApp(
@@ -95,7 +96,11 @@ class RoomScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            ..._buildPlantWidgets(mqttService.temperature[room] ?? {}, mqttService.humidity[room] ?? {}, room, mqttService.plants)
+            ..._buildPlantWidgets(mqttService.temperature[room] ?? {}, mqttService.humidity[room] ?? {}, room, mqttService.plants),
+           if (room == 'garden') ElevatedButton(onPressed: () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => DetectionScreen()));
+              },child: Text('Snail detections'),
+            ),
           ],
         ),
       ),
@@ -127,5 +132,30 @@ class RoomScreen extends StatelessWidget {
       }
     }
     return widgets;
+  }
+}
+class DetectionScreen extends StatelessWidget {
+
+  @override
+  Widget build(BuildContext context) {
+    final mqttService = Provider.of<MQTTService>(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Recent detection'),
+      ),
+      body: Center(
+        child: Builder(builder: (context) {
+          if (mqttService.detections.isEmpty) {
+            return Text('No detections received');
+          } else {
+            return Column(children: [
+              Image.memory(base64Decode(mqttService.detections.last['im_bytes'])),
+              Text(mqttService.detections.last['label'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+              Text("Time of detection: " + mqttService.detections.last['time'])
+              ],);
+          }
+        },)
+      ),
+    );
   }
 }

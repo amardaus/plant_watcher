@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
@@ -14,6 +16,9 @@ class MQTTService with ChangeNotifier {
 
   Set<String> _plantsSet = {};
   List<String> get plants => _plantsSet.toList();
+
+  List<Map<String, dynamic>> _detections = []; 
+  List<Map<String, dynamic>> get detections => _detections;
 
   MQTTService() {
     client = MqttServerClient('192.168.187.101', 'client1');
@@ -37,28 +42,50 @@ class MQTTService with ChangeNotifier {
       for (String room in rooms) {
         client.subscribe('/$room/#', MqttQos.atLeastOnce);
       }
+      client.subscribe('/detections', MqttQos.atLeastOnce);
 
       client.updates!.listen((List<MqttReceivedMessage<MqttMessage?>>? c) {
         final MqttPublishMessage message = c![0].payload as MqttPublishMessage;
         final payload = MqttPublishPayload.bytesToStringAsString(message.payload.message);
         final topic = c[0].topic;
 
-        final parts = topic.split('/');
-        final room = parts[1];
-        final plant = parts[2];
-        final type = parts[3];
-
-        _plantsSet.add(plant);
-
-        if(type == 'temperature'){
-          _temperature[room] ??= {};
-          _temperature[room]![plant] = double.tryParse(payload) ?? 0.0;
+        if(topic == '/detections'){
+          print("detectopm!");
+          print(payload);
+          RegExp regExp = RegExp(r'\{.*?\}', dotAll: true);
+          RegExpMatch? match = regExp.firstMatch(payload);
+          print(payload);
+          print("match: ");
+          print(match);
+          if(match != null){
+            String? jsonString = match.group(0)?.trim();
+            jsonString = jsonString?.replaceAll("'", '"');
+            try {
+              Map<String, dynamic> jsonMap = jsonDecode(jsonString!);
+              detections.add(jsonMap);
+            } 
+            catch (e) {
+              print('Error decoding JSON: $e');
+            }
+          }
         }
-        else if(type == 'humidity'){
-          _humidity[room] ??= {};
-          _humidity[room]![plant] = double.tryParse(payload) ?? 0.0;
-        }
+        else{
+          final parts = topic.split('/');
+          final room = parts[1];
+          final plant = parts[2];
+          final type = parts[3];
 
+          _plantsSet.add(plant);
+
+          if(type == 'temperature'){
+            _temperature[room] ??= {};
+            _temperature[room]![plant] = double.tryParse(payload) ?? 0.0;
+          }
+          else if(type == 'humidity'){
+            _humidity[room] ??= {};
+            _humidity[room]![plant] = double.tryParse(payload) ?? 0.0;
+          }
+        }
         notifyListeners();
       });
     } catch (e) {
