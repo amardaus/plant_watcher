@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:provider/provider.dart';
 import 'mqtt_service.dart';
 import 'dart:convert';
@@ -134,7 +135,37 @@ class RoomScreen extends StatelessWidget {
     return widgets;
   }
 }
-class DetectionScreen extends StatelessWidget {
+
+class DetectionScreen extends StatelessWidget{
+  
+  @override
+  Widget build(BuildContext context) {
+    final mqttService = Provider.of<MQTTService>(context);
+    
+      return Scaffold(
+        appBar: AppBar(
+        title: Text('Detections'),
+      ),
+      body: ListView.builder(
+        itemCount: mqttService.detections.length,
+        itemBuilder: (BuildContext context, int index) {
+          return ListTile(
+            title: Text(mqttService.detections[index]['label']),
+            onTap: () {
+              print('index: ' + index.toString());
+              Navigator.push(context, MaterialPageRoute(builder: (context) => DetectionDetailsScreen(index: index)));
+            },
+          );
+        },
+      )
+    );
+  }
+}
+
+class DetectionDetailsScreen extends StatelessWidget {
+  final int index;
+
+  DetectionDetailsScreen({required this.index});
 
   @override
   Widget build(BuildContext context) {
@@ -149,9 +180,9 @@ class DetectionScreen extends StatelessWidget {
             return Text('No detections received');
           } else {
             return Column(children: [
-              Image.memory(base64Decode(mqttService.detections.last['im_bytes'])),
-              Text(mqttService.detections.last['label'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-              Text("Time of detection: " + mqttService.detections.last['time'])
+              Image.memory(base64Decode(mqttService.detections[index]['im_bytes'])),
+              Text(mqttService.detections[index]['label'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+              Text("Time of detection: " + mqttService.detections[index]['time'])
               ],);
           }
         },)
